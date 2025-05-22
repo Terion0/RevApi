@@ -92,14 +92,47 @@ namespace RevApi.Controllers
             return Ok(count);
         }
 
-      
+
         [HttpGet("GetMediaReview/{workshopId}")]
         public async Task<IActionResult> GetMediaReviews(int workshopId)
         {
-            var averageRating = _context.Reviews
+            var ratings = await _context.Reviews
                 .Where(r => r.WorkshopId == workshopId)
-                .Average(r => r.Rating); 
+                .Select(r => (double?)r.Rating)
+                .ToListAsync();
+
+            var averageRating = ratings.Any() ? ratings.Average() : 0;
+
             return Ok(averageRating);
+        }
+
+
+        [HttpGet("GetReview/{userId}/{workshopId}")]
+        public async Task<IActionResult> GetReviewByUserAndWorkshop(int userId,  int workshopId)
+        {
+            var review = await _context.Reviews
+                .Include(r => r.Response)
+                .FirstOrDefaultAsync(r => r.UserId == userId && r.WorkshopId == workshopId);
+
+            if (review != null)
+            {
+                var reviewDTO = new ReviewDetailDTO
+                {
+                    Id = review.Id,
+                    Rating = review.Rating,
+                    Comment = review.Comment,
+                    UserId = review.UserId,
+                    Response = review.Response != null ? new ResponseUpdateDTO
+                    {
+                        Id = review.Response.Id,
+                        Message = review.Response.Message
+                    } : null
+                };
+
+                return Ok(reviewDTO);
+            }
+
+            return Ok(null);
         }
 
         [Authorize(Policy = "ClientOnly")]
@@ -122,13 +155,14 @@ namespace RevApi.Controllers
                 };
 
                 _context.Reviews.Add(rev);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
                 return Ok();
             }
             else {
-                return BadRequest("Ya tienes una review");
+                return Conflict("Ya tienes una review para este taller.");
+
             }
-             
+
         }
 
         [Authorize(Policy = "ClientOnly")]
